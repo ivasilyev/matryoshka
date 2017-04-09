@@ -14,7 +14,7 @@ Available processing  modes:
 - Local multi-thread mode;
 - Local single-thread "don't-like-bash" mode
 
-Requires installed *python 3.3+ *and [*Paramiko*](http://www.paramiko.org/) module.
+Requires installed *python 3.3+* and [*Paramiko*](http://www.paramiko.org/) module.
 The usage example:
 ```
 matryoshka.py -i var_table.txt -o result_dir -t 8 -n "node9,node7,node5" -s "myprogram \$0 constant1 \$1 constant2"
