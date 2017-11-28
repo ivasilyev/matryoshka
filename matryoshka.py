@@ -1,4 +1,5 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
 import getopt
 import sys
@@ -13,12 +14,12 @@ import paramiko
 def usage():
     print("\nUsage: " + sys.argv[0] + " -i <file> -o <dir> -w -t <int> -n <str> -s <str>" + "\n\n" +
           "-i/--input <file> \tA tab-delimited table without a header containing all required variables" + "\n" +
-          "-o/--output <dir> \tText table file" + "\n" +
+          "-o/--output <dir> \tOutput directory" + "\n" +
           "-w/--wait <bool> \t(Optional) If specified, program will wait for completion of all tasks, always enabled for local use" + "\n" +
           "-t/--threads <int> \t(Optional) Number of threads to create" + "\n" +
           "-n/--nodes <str> \t(Optional) Comma-divided list of nodes or text file with authentication data one per line in format: \"node:username:password:port\"" + "\n" +
-          "-s/--string <str> \tA quoted constant string containing zero-based links to right table columns supplied by the \"\$\" symbols" + "\n\n" +
-          "The example table.txt: " + "\n" +
+          "-s/--string <str> \tA constant string containing zero-based indexes of required table columns supplied by the \"\$\" symbols" + "\n\n" +
+          "The example table: " + "\n" +
           "A1\tB1\nA2\tB2" + "\n\n" +
           "The example constant string: " + "\n" +
           "\"program constant_arg1 \$0 constant_arg2 \$1\"" + "\n\n" +
@@ -52,7 +53,7 @@ def main():
         elif opt in ("-t", "--threads"):
             try:
                 t = int(arg)
-            except TypeError:
+            except ValueError:
                 print("Incorrect threads number!")
                 usage()
         elif opt in ("-n", "--nodes"):
@@ -101,7 +102,7 @@ def stdin_assembler(const_string, var_strings_list):
     const_string_indexes = sorted(list(map(lambda x: int(x), list(filter(None, re.findall('\$([0-9]*)', const_string))))))
     output_strings_list = []
     for var_string in list(filter(None, var_strings_list)):
-        var_string_splitted = list(filter(None, var_string.replace('\n', '').split('\t')))
+        var_string_splitted = list(filter(None, var_string.replace('\r', '\n').replace('\n', '').split('\t')))
         output_string = str(const_string) + " "
         for const_string_index in const_string_indexes:
             output_string = output_string.replace("$" + str(const_string_index) + " ", str(var_string_splitted[const_string_index]) + " ")
@@ -122,8 +123,8 @@ def list_chop(input_list, number_of_chunks):
 
 
 def make_single_core_dummy(dummy_commands_list, dummy_mask):
-    dummy_body = str("# -*- coding: utf-8 -*-" + "\n" +
-                     "# !/usr/bin/python)" + "\n" +
+    dummy_body = str("#!/usr/bin/env python3)" + "\n" +
+                     "# -*- coding: utf-8 -*- " + "\n" +
                      "" + "\n" +
                      "import os" + "\n" +
                      "import sys" + "\n" +
@@ -169,8 +170,8 @@ def make_single_core_dummy(dummy_commands_list, dummy_mask):
 
 
 def make_multi_core_dummy(dummy_commands_list, dummy_mask, cores_number):
-    dummy_body = str("# -*- coding: utf-8 -*-" + "\n" +
-                     "# !/usr/bin/python)" + "\n" +
+    dummy_body = str("#!/usr/bin/env python3)" + "\n" +
+                     "# -*- coding: utf-8 -*- " + "\n" +
                      "" + "\n" +
                      "import os" + "\n" +
                      "import sys" + "\n" +
@@ -229,10 +230,10 @@ def make_multi_core_dummy(dummy_commands_list, dummy_mask, cores_number):
 
 def dummy_multiprocessing_check(commands, mask):
     if inputThreadsNumber is not None and inputThreadsNumber > 1:
-        if inputThreadsNumber > int(multiprocessing.cpu_count()):
-            logging.critical("The threads number is too large!\nAvailable CPU cores: " + str(int(multiprocessing.cpu_count())))
-            logging.info("Exiting...")
-            sys.exit(2)
+        # if inputThreadsNumber > int(multiprocessing.cpu_count()):
+        #     logging.critical("The threads number is too large! Available CPU cores: " + str(int(multiprocessing.cpu_count())))
+        #     logging.info("Exiting...")
+        #     sys.exit(2)
         dummy_name = make_multi_core_dummy(commands, mask, inputThreadsNumber)
         logging.info("The multi-threading wrappers were created!")
     else:
@@ -244,7 +245,7 @@ def dummy_multiprocessing_check(commands, mask):
 def local_use():
     commands_total_list = stdin_assembler(inputString, file_to_str(inputFile).split("\n"))
     dummy = dummy_multiprocessing_check(commands_total_list, outputDir + "dummy_local")
-    dummy_launch_command = "nohup python " + dummy
+    dummy_launch_command = "nohup nice -n 19 python3 " + dummy
     return dummy_launch_command
 
 
@@ -255,7 +256,7 @@ def remote_use(nodes_2d_array):
     node_index = 0
     for node_list in nodes_2d_array:
         dummy = dummy_multiprocessing_check(commands_splitted_list[node_index], outputDir + "dummy_" + node_list[0])
-        dummies_launch_commands.append([node_list, "nohup python " + dummy])
+        dummies_launch_commands.append([node_list, "nohup nice -n 19 python3 " + dummy])
         node_index += 1
     return dummies_launch_commands
 
@@ -276,9 +277,9 @@ def get_available_nodes():
 
 def input2nodes_lists(string_or_file):
     if os.path.isfile(string_or_file):
-        nodes = sorted(list(filter(None, file_to_str(string_or_file).split('\n'))))
+        nodes = sorted(list(filter(None, file_to_str(string_or_file).split('\n'))), reverse=True)  # our newest nodes are faster
     else:
-        nodes = sorted(list(filter(None, string_or_file.split(","))))
+        nodes = sorted(list(filter(None, string_or_file.split(","))), reverse=True)
     nodes_2d_array = []
     for node in nodes:
         node_list = node2list(node)
@@ -348,10 +349,8 @@ def external_route(input_direction, output_direction):
     cmd = input_direction.split(" ")
     process = subprocess.Popen(cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     (output, error) = process.communicate()
-    file_append(output.decode("utf-8"), output_direction)
-    for stdout_line in iter(process.stdout.readline, ""):
-        file_append(stdout_line, output_direction)
     process.wait()
+    file_append(output.decode("utf-8"), output_direction)
 
 
 def file_append(string, file_to_append):
@@ -361,6 +360,8 @@ def file_append(string, file_to_append):
 
 
 def filename_only(string):
+    if len(str(".".join(string.rsplit("/", 1)[-1].split(".")[:-1]))) == 0:
+        return ".".join(string.rsplit("/", 1)[-1].split("."))
     return str(".".join(string.rsplit("/", 1)[-1].split(".")[:-1]))
 
 
@@ -382,7 +383,6 @@ def launch_facility(commands_list):
 
 ########################################
 inputFile, outputDir, waitBoolean, inputThreadsNumber, nodesInputList, inputString = main()
-
 
 if sys.version_info < (3, 3):
     print("This program requires Python 3.3+ interpreter!\nExiting...")
